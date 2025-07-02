@@ -101,7 +101,7 @@ public class SpriteSheetJsonExporter
 
         string defaultFileName = Path.GetFileNameWithoutExtension(assetPath);
         string defaultSavePath = EditorPrefs.GetString(SavePathKey, Application.dataPath);
-        string savePath = EditorUtility.SaveFilePanel("JSON 파일로 저장", defaultSavePath, defaultFileName + "_sprites", "json");
+        string savePath = EditorUtility.SaveFilePanel("JSON 파일로 저장", defaultSavePath, defaultFileName + "_Sprites", "json");
 
         if (string.IsNullOrEmpty(savePath))
         {

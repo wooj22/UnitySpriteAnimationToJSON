@@ -6,16 +6,9 @@ using System.IO;
 
 public class AnimatorControllerExporter
 {
-    // UnityEngine.AnimatorConditionMode 의 문자열 매핑
     public static readonly string[] ConditionModes = new string[]
     {
-        "If",        // bool 파라미터가 true일 때 전이됨
-        "IfNot",     // bool 파라미터가 false일 때 전이됨
-        "Greater",   // float/int 파라미터가 기준값보다 클 때 전이됨
-        "Less",      // float/int 파라미터가 기준값보다 작을 때 전이됨
-        "Equals",    // int 파라미터가 기준값과 같을 때 전이됨
-        "NotEqual",  // int 파라미터가 기준값과 다를 때 전이됨
-        "Always"     // 조건 없이 항상 전이됨 (조건이 없는 경우 명시적으로 사용됨)
+        "If", "IfNot", "Greater", "Less", "Equals", "NotEqual", "Always"
     };
 
     [System.Serializable]
@@ -29,16 +22,21 @@ public class AnimatorControllerExporter
     }
 
     [System.Serializable]
+    public class ConditionInfo
+    {
+        public string parameter;
+        public string mode;
+        public float threshold;
+    }
+
+    [System.Serializable]
     public class TransitionInfo
     {
         public string fromState;
         public string toState;
-        public string conditionParameter;
-        public string conditionMode;
-        public float threshold;
         public float exitTime;
-        public float duration;
         public bool hasExitTime;
+        public List<ConditionInfo> conditions = new List<ConditionInfo>();
     }
 
     [System.Serializable]
@@ -46,6 +44,8 @@ public class AnimatorControllerExporter
     {
         public string name;
         public string motionName;
+        public float clipLength;
+        public bool loop;
         public List<TransitionInfo> transitions = new List<TransitionInfo>();
     }
 
@@ -53,45 +53,35 @@ public class AnimatorControllerExporter
     public class SpecialTransitionInfo
     {
         public string toState;
-        public string conditionParameter;
-        public string conditionMode;
-        public float threshold;
-        public float duration;
+        public List<ConditionInfo> conditions = new List<ConditionInfo>();
     }
 
     [System.Serializable]
-    public class LayerInfo
+    public class AnimatorControllerExport
     {
-        public string layerName;
+        public string controllerName;
+        public List<ParameterInfo> parameters = new List<ParameterInfo>();
         public string defaultState;
         public List<StateInfo> states = new List<StateInfo>();
         public List<SpecialTransitionInfo> anyStateTransitions = new List<SpecialTransitionInfo>();
     }
 
-    [System.Serializable]
-    public class AnimatorControllerInfo
-    {
-        public string controllerName;
-        public List<ParameterInfo> parameters = new List<ParameterInfo>();
-        public List<LayerInfo> layers = new List<LayerInfo>();
-    }
-
-    [MenuItem("Assets/SpriteTool/Export AnimatorController to JSON", false, 2001)]
-    public static void ExportSelectedAnimatorController()
+    [MenuItem("Assets/SpriteTool/Export AnimController to JSON", false, 2002)]
+    public static void ExportFirstLayerStateMachine()
     {
         var controller = Selection.activeObject as AnimatorController;
-        if (controller == null)
+        if (controller == null || controller.layers.Length == 0)
         {
-            EditorUtility.DisplayDialog("에러", "AnimatorController를 선택하세요.", "확인");
+            EditorUtility.DisplayDialog("에러", "AnimatorController의 첫 번째 Layer를 찾을 수 없습니다.", "확인");
             return;
         }
 
-        AnimatorControllerInfo info = new AnimatorControllerInfo();
-        info.controllerName = controller.name;
+        AnimatorControllerExport export = new AnimatorControllerExport();
+        export.controllerName = controller.name;
 
         foreach (var param in controller.parameters)
         {
-            info.parameters.Add(new ParameterInfo
+            export.parameters.Add(new ParameterInfo
             {
                 name = param.name,
                 type = param.type.ToString(),
@@ -101,102 +91,94 @@ public class AnimatorControllerExporter
             });
         }
 
-        foreach (var layer in controller.layers)
+        var stateMachine = controller.layers[0].stateMachine;
+        export.defaultState = stateMachine.defaultState?.name ?? "";
+
+        foreach (var childState in stateMachine.states)
         {
-            var stateMachine = layer.stateMachine;
-            var layerInfo = new LayerInfo
+            var state = childState.state;
+            var clip = state.motion as AnimationClip;
+            var stateInfo = new StateInfo
             {
-                layerName = layer.name,
-                defaultState = stateMachine.defaultState?.name ?? ""
+                name = state.name,
+                motionName = clip != null ? clip.name : "",
+                clipLength = clip != null ? clip.length : 0f,
+                loop = clip != null && clip.isLooping
             };
 
-            foreach (var childState in stateMachine.states)
+            foreach (var transition in state.transitions)
             {
-                var state = childState.state;
-                var stateInfo = new StateInfo
+                var t = new TransitionInfo
                 {
-                    name = state.name,
-                    motionName = state.motion != null ? state.motion.name : ""
+                    fromState = state.name,
+                    toState = transition.destinationState?.name ?? "Exit",
+                    exitTime = transition.hasExitTime ? transition.exitTime : -1f,
+                    hasExitTime = transition.hasExitTime
                 };
 
-                foreach (var transition in state.transitions)
+                if (transition.conditions.Length > 0)
                 {
-                    if (transition.conditions.Length > 0)
+                    foreach (var cond in transition.conditions)
                     {
-                        foreach (var cond in transition.conditions)
+                        t.conditions.Add(new ConditionInfo
                         {
-                            var t = new TransitionInfo
-                            {
-                                fromState = state.name,
-                                toState = transition.destinationState?.name ?? "Exit",
-                                exitTime = transition.hasExitTime ? transition.exitTime : -1f,
-                                duration = transition.duration,
-                                hasExitTime = transition.hasExitTime,
-                                conditionParameter = cond.parameter,
-                                conditionMode = cond.mode.ToString(),
-                                threshold = cond.threshold
-                            };
-                            stateInfo.transitions.Add(t);
-                        }
-                    }
-                    else
-                    {
-                        var t = new TransitionInfo
-                        {
-                            fromState = state.name,
-                            toState = transition.destinationState?.name ?? "Exit",
-                            exitTime = transition.hasExitTime ? transition.exitTime : -1f,
-                            duration = transition.duration,
-                            hasExitTime = transition.hasExitTime,
-                            conditionParameter = "",
-                            conditionMode = "Always",
-                            threshold = 0f
-                        };
-                        stateInfo.transitions.Add(t);
-                    }
-                }
-
-                layerInfo.states.Add(stateInfo);
-            }
-
-            foreach (var anyTrans in stateMachine.anyStateTransitions)
-            {
-                if (anyTrans.destinationState == null) continue;
-
-                if (anyTrans.conditions.Length > 0)
-                {
-                    foreach (var cond in anyTrans.conditions)
-                    {
-                        var t = new SpecialTransitionInfo
-                        {
-                            toState = anyTrans.destinationState.name,
-                            conditionParameter = cond.parameter,
-                            conditionMode = cond.mode.ToString(),
-                            threshold = cond.threshold,
-                            duration = anyTrans.duration
-                        };
-                        layerInfo.anyStateTransitions.Add(t);
+                            parameter = cond.parameter,
+                            mode = cond.mode.ToString(),
+                            threshold = cond.threshold
+                        });
                     }
                 }
                 else
                 {
-                    var t = new SpecialTransitionInfo
+                    t.conditions.Add(new ConditionInfo
                     {
-                        toState = anyTrans.destinationState.name,
-                        conditionParameter = "",
-                        conditionMode = "Always",
-                        threshold = 0f,
-                        duration = anyTrans.duration
-                    };
-                    layerInfo.anyStateTransitions.Add(t);
+                        parameter = "",
+                        mode = "Always",
+                        threshold = 0f
+                    });
                 }
+                stateInfo.transitions.Add(t);
             }
 
-            info.layers.Add(layerInfo);
+            export.states.Add(stateInfo);
         }
 
-        string json = JsonUtility.ToJson(info, true);
-        string path = EditorUtility.SaveFilePanel("AnimatorController JSON 저장", "", controller.name + "_AnimController.json", "json");
+        foreach (var anyTrans in stateMachine.anyStateTransitions)
+        {
+            if (anyTrans.destinationState == null) continue;
+
+            var t = new SpecialTransitionInfo
+            {
+                toState = anyTrans.destinationState.name
+            };
+
+            if (anyTrans.conditions.Length > 0)
+            {
+                foreach (var cond in anyTrans.conditions)
+                {
+                    t.conditions.Add(new ConditionInfo
+                    {
+                        parameter = cond.parameter,
+                        mode = cond.mode.ToString(),
+                        threshold = cond.threshold
+                    });
+                }
+            }
+            else
+            {
+                t.conditions.Add(new ConditionInfo
+                {
+                    parameter = "",
+                    mode = "Always",
+                    threshold = 0f
+                });
+            }
+
+            export.anyStateTransitions.Add(t);
+        }
+
+        string json = JsonUtility.ToJson(export, true);
+        string path = EditorUtility.SaveFilePanel("AnimController JSON 저장", "", controller.name + "_AnimController.json", "json");
         if (!string.IsNullOrEmpty(path))
         {
             File.WriteAllText(path, json);

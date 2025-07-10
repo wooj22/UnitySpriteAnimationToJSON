@@ -60,7 +60,7 @@ public class AnimationClipToJson
             }
 
             string defaultFolder = EditorPrefs.GetString(EditorPrefsKey, Application.dataPath);
-            string defaultFileName = clip.name + "_AniClip.json";
+            string defaultFileName = clip.name + "_anim.json";
             string savePath = EditorUtility.SaveFilePanel("JSON 파일로 저장", defaultFolder, defaultFileName, "json");
 
             if (string.IsNullOrEmpty(savePath))

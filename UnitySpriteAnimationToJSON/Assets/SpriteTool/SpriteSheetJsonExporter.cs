@@ -91,8 +91,9 @@ public class SpriteSheetJsonExporter
             {
                 name = sprite.name,
                 x = rect.x,
-                y = rect.y,
-                width = rect.width,
+                // Unity의 Sprite Rect는 좌표가 왼쪽 아래 기준이므로 Y 좌표를 조정
+                y = spritelist.textureHeight - rect.height,
+                width = rect.width,               
                 height = rect.height,
                 pivotX = sprite.pivot.x / rect.width,
                 pivotY = sprite.pivot.y / rect.height
